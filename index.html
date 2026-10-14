@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drive Maps: login com o Google</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #eef1f4;
+    --card: #ffffff;
+    --fg: #1b2430;
+    --muted: #5a6675;
+    --line: #d5dbe2;
+    --accent: #1f5fa8;
+    --accent-fg: #ffffff;
+    --ok: #17663f;
+    --bad: #a3271b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12171d;
+      --card: #1b222b;
+      --fg: #e7ebf0;
+      --muted: #9aa7b6;
+      --line: #2e3844;
+      --accent: #78b0ec;
+      --accent-fg: #0c1218;
+      --ok: #6fd3a0;
+      --bad: #f19a90;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main {
+    width: 100%;
+    max-width: 440px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 26px 26px 22px;
+  }
+  h1 { margin: 0 0 12px; font-size: 1.25rem; font-weight: 650; line-height: 1.3; }
+  p { margin: 0 0 14px; }
+  .muted { color: var(--muted); font-size: .92rem; }
+  .origin {
+    display: block;
+    margin: 4px 0 14px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: .88rem;
+    word-break: break-all;
+  }
+  button {
+    font: inherit;
+    font-weight: 600;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: 0;
+    border-radius: 7px;
+    padding: 10px 18px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .55; cursor: default; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  #msg { margin-top: 16px; min-height: 1.5em; }
+  #msg.ok { color: var(--ok); }
+  #msg.bad { color: var(--bad); }
+  #result { margin-top: 10px; white-space: pre-line; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Login com o Google</h1>
+  <div id="intro"></div>
+  <button id="go" type="button">Continuar com o Google</button>
+  <div id="msg" role="status" aria-live="polite"></div>
+  <div id="result"></div>
+</main>
+
+<script>
+/* ============================================================
+   CONFIGURAÇÃO: cole aqui o seu Client ID do Google (Etapa 0).
+   Ele é público, não é uma senha. Mantenha as aspas.
+   ============================================================ */
+const CLIENT_ID = "COLE_AQUI_O_CLIENT_ID.apps.googleusercontent.com";
+
+const SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+const API = "https://www.googleapis.com/drive/v3";
+
+const params = new URLSearchParams(location.search);
+const state = params.get("state") || "";
+const originParam = params.get("origin");
+const isTest = !originParam;
+
+const $ = id => document.getElementById(id);
+const btn = $("go");
+
+function say(text, kind) {
+  const m = $("msg");
+  m.textContent = text;
+  m.className = kind || "";
+}
+
+/* Aceita só uma origem http(s) bem formada, por exemplo http://localhost:30000 */
+function parseOrigin(value) {
+  try {
+    const u = new URL(value);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.origin === value ? u.origin : null;
+  } catch { return null; }
+}
+const targetOrigin = isTest ? null : parseOrigin(originParam);
+
+function loadGIS() {
+  if (window.google?.accounts?.oauth2) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("Não foi possível carregar o login do Google. Confira a internet."));
+    document.head.append(s);
+  });
+}
+
+function requestToken() {
+  return new Promise((resolve, reject) => {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPE,
+      callback: r => r.error
+        ? reject(new Error(r.error_description || r.error))
+        : resolve(r),
+      error_callback: e => reject(new Error(e?.type || "popup_closed"))
+    });
+    client.requestAccessToken({ prompt: "" });
+  });
+}
+
+/* ---------- Modo normal: entrega o acesso ao Foundry ---------- */
+function sendToFoundry(payload) {
+  window.opener.postMessage(
+    { source: "drive-maps-bridge", state, ...payload },
+    targetOrigin
+  );
+}
+
+async function runBridge() {
+  btn.disabled = true;
+  say("Abrindo o login do Google...");
+  try {
+    await loadGIS();
+    const r = await requestToken();
+    sendToFoundry({ access_token: r.access_token, expires_in: Number(r.expires_in) });
+    say("Pronto. Esta janela vai fechar. Volte ao Foundry.", "ok");
+    setTimeout(() => window.close(), 900);
+  } catch (e) {
+    sendToFoundry({ error: e.message });
+    say(`Não deu certo: ${e.message}`, "bad");
+    btn.disabled = false;
+  }
+}
+
+/* ---------- Modo teste: abra a página direto, sem o Foundry ---------- */
+async function driveList(token, q, pageToken) {
+  const p = new URLSearchParams({
+    q,
+    pageSize: "1000",
+    fields: "nextPageToken,files(id,md5Checksum)",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+    corpora: "allDrives"
+  });
+  if (pageToken) p.set("pageToken", pageToken);
+  const r = await fetch(`${API}/files?${p}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw new Error(`O Drive respondeu com erro ${r.status}.`);
+  return r.json();
+}
+
+async function runTest() {
+  btn.disabled = true;
+  say("Abrindo o login do Google...");
+  try {
+    await loadGIS();
+    const { access_token: token } = await requestToken();
+
+    say("Login feito. Procurando os module.json no seu Drive...");
+    const about = await fetch(`${API}/about?fields=user(emailAddress,displayName)`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const user = about.ok ? (await about.json()).user : null;
+
+    let total = 0, pages = 0, next = null;
+    const hashes = new Set();
+    do {
+      const data = await driveList(token, "name = 'module.json' and trashed = false", next);
+      for (const f of data.files ?? []) { total++; hashes.add(f.md5Checksum || f.id); }
+      next = data.nextPageToken || null;
+      pages++;
+    } while (next && pages < 20);
+
+    say("Teste concluído.", "ok");
+    $("result").textContent =
+      `Conta: ${user ? user.emailAddress : "(não foi possível ler)"}\n` +
+      `Arquivos module.json encontrados: ${total}${next ? " (parei na página 20)" : ""}\n` +
+      `Diferentes pelo conteúdo: ${hashes.size}`;
+  } catch (e) {
+    say(`Não deu certo: ${e.message}`, "bad");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ---------- Início ---------- */
+(function init() {
+  const intro = $("intro");
+
+  if (CLIENT_ID.startsWith("COLE_AQUI")) {
+    $("title").textContent = "Falta configurar";
+    intro.innerHTML = "<p>O Client ID do Google ainda não foi colado no arquivo <b>index.html</b> (linha CLIENT_ID).</p>";
+    btn.hidden = true;
+    return;
+  }
+
+  if (isTest) {
+    $("title").textContent = "Teste do login (modo direto)";
+    intro.innerHTML = '<p class="muted">Esta é a página-ponte do Drive Maps. Aberta direto, ela só testa o login e conta os arquivos module.json do seu Drive. Nada é guardado nem enviado a ninguém.</p>';
+    btn.textContent = "Testar login e Drive";
+    btn.addEventListener("click", runTest);
+    return;
+  }
+
+  if (!targetOrigin) {
+    $("title").textContent = "Endereço inválido";
+    intro.innerHTML = "<p>O endereço do Foundry que abriu esta janela não é válido. Feche e tente de novo pelo botão Conectar do módulo.</p>";
+    btn.hidden = true;
+    return;
+  }
+
+  if (!window.opener) {
+    $("title").textContent = "Abra pelo Foundry";
+    intro.innerHTML = "<p>Esta janela precisa ser aberta pelo botão <b>Conectar</b> do módulo Drive Maps, dentro do Foundry.</p>";
+    btn.hidden = true;
+    return;
+  }
+
+  $("title").textContent = "Conectar ao seu Google Drive";
+  intro.innerHTML = '<p>O Foundry neste endereço pede para <b>ler</b> seus arquivos do Drive (só leitura, nada é alterado):</p>' +
+    '<code class="origin"></code>' +
+    '<p class="muted">Se você não clicou em Conectar no Foundry, feche esta janela.</p>';
+  intro.querySelector(".origin").textContent = targetOrigin;
+  btn.addEventListener("click", runBridge);
+})();
+</script>
+</body>
+</html>
