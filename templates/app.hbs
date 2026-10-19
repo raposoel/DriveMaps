@@ -1,0 +1,32 @@
+<div class="dms-wrap">
+  <div class="dms-bar">
+    <input type="search" name="q" placeholder="Buscar módulos (ex.: goblin ponte taverna)">
+    <button type="button" data-action="connect" class="dms-connect"><i class="fa-brands fa-google"></i> <span>Conectar</span></button>
+    <button type="button" data-action="index" class="dms-index"><i class="fa-solid fa-rotate"></i> <span>Indexar o Drive</span></button>
+    <button type="button" data-action="cancel" class="dms-cancel" hidden><i class="fa-solid fa-xmark"></i> Cancelar</button>
+    <button type="button" data-action="rethumb" class="dms-rethumb" title="Refazer as miniaturas (mantém o índice)"><i class="fa-solid fa-image"></i></button>
+    <button type="button" data-action="clear" class="dms-clear" title="Apagar tudo o que está guardado neste navegador"><i class="fa-solid fa-trash"></i></button>
+  </div>
+  <p class="dms-status">Clique em Conectar para entrar no Google.</p>
+  <progress class="dms-progress" value="0" max="100" hidden></progress>
+  <div class="dms-modhead" hidden>
+    <button type="button" data-action="back"><i class="fa-solid fa-arrow-left"></i> Voltar</button>
+    <strong class="dms-modtitle"></strong>
+    <span class="dms-modinfo"></span>
+    <button type="button" data-action="import" class="dms-import" hidden><i class="fa-solid fa-download"></i> Importar...</button>
+    <div class="dms-selbar" hidden>
+      <span class="dms-selcount"></span>
+      <button type="button" data-action="selall">Marcar todas</button>
+      <button type="button" data-action="selnone">Limpar</button>
+      <button type="button" data-action="selcancel">Cancelar</button>
+      <button type="button" data-action="selok" class="dms-primary" disabled>OK</button>
+    </div>
+  </div>
+  <div class="dms-grid"></div>
+  <div class="dms-load" hidden></div>
+  <div class="dms-pager" hidden>
+    <button type="button" data-action="prev"><i class="fa-solid fa-chevron-left"></i> Anterior</button>
+    <span class="dms-page"></span>
+    <button type="button" data-action="next">Próxima <i class="fa-solid fa-chevron-right"></i></button>
+  </div>
+</div>
